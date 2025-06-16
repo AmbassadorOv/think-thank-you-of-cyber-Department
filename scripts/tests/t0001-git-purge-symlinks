@@ -1,71 +1,107 @@
-#!/usr/bin/env bash
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RE-ENGINEERING LLM OUTPUTS INTO QUANTUM SYMBOLIC REGISTERS</title>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: monospace;
+    }
+    canvas {
+      display: block;
+    }
+    .overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #0ff;
+      font-size: 14px;
+      z-index: 100;
+      max-width: 30%;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay">
+    <h2>🧠 Quantum Symbolic Register Prototype</h2>
+    <p>Goal: To transform symbolic language into a quantum-anchored, recursively stable register using 36 Unity Points.</p>
+    <ul>
+      <li>🔤 Letters: Anchored into unity-point lattice</li>
+      <li>🧬 Recursive Θ Transformations</li>
+      <li>🧠 Symbolic Collapse: Entropic coherence output</li>
+    </ul>
+  </div>
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
-out=/dev/null
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 60;
 
-function test_expect_success {
-    if ! eval "$* >$out"; then
-        echo "FAILURE: $(basename "${BASH_SOURCE[0]}: $*")"
-        exit 1
-    fi
-}
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-function test_expect_failure {
-    if eval "$* >$out"; then
-        echo "SUCCESS although FAILURE expected: $(basename "${BASH_SOURCE[0]}: $*")"
-        exit 1
-    fi
-}
+    const controls = new OrbitControls(camera, renderer.domElement);
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/..">/dev/null && pwd)"
-test_dir="$script_dir/tmp"
+    const sphereGeometry = new THREE.SphereGeometry(0.6, 32, 32);
+    const unityMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+    const letterMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const collapseMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff });
 
-rm -rf "$test_dir"
-mkdir "$test_dir"
-pushd "$test_dir" >/dev/null
+    const unityPoints = [];
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < 36; i++) {
+      const y = 1 - (i / 35) * 2;
+      const radius = Math.sqrt(1 - y * y);
+      const theta = goldenAngle * i;
+      const x = Math.cos(theta) * radius * 20;
+      const z = Math.sin(theta) * radius * 20;
+      const point = new THREE.Mesh(sphereGeometry, unityMaterial);
+      point.position.set(x, y * 20, z);
+      scene.add(point);
+      unityPoints.push(point.position);
+    }
 
-    git init -q .
+    const input = "ARCHONTHEATA";
+    const letters = [];
+    const collapseTarget = new THREE.Vector3(0, 0, 0);
+    for (let i = 0; i < input.length; i++) {
+      const u = unityPoints[i % 36];
+      const base = new THREE.Mesh(sphereGeometry, letterMaterial);
+      base.position.set(u.x * 0.3, u.y * 0.3, u.z * 0.3);
+      scene.add(base);
+      letters.push({ mesh: base, origin: base.position.clone() });
+    }
 
-    mkdir foo
-    echo "foo" >foo/baz
-    git add .
-    git commit -qm "add foo dir with file"
+    const collapseSphere = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), collapseMaterial);
+    collapseSphere.position.copy(collapseTarget);
+    scene.add(collapseSphere);
 
-    ln -s foo bar
-    git add .
-    git commit -qm "add bar dir as link"
+    let step = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      step += 0.005;
+      letters.forEach((letter, i) => {
+        const ratio = 0.5 + 0.5 * Math.sin(step + i);
+        letter.mesh.position.lerpVectors(letter.origin, collapseTarget, ratio * 0.3);
+      });
+      scene.rotation.y += 0.0025;
+      renderer.render(scene, camera);
+    }
 
-    rm bar
-    mkdir bar
-    echo "bar" >bar/baz
-    git add .
-    git commit -qm "remove link and make bar dir real"
+    animate();
 
-    test_expect_success ../git-purge-files -c
-
-popd >/dev/null
-
-rm -rf "$test_dir"
-mkdir "$test_dir"
-pushd "$test_dir" >/dev/null
-
-    git init -q .
-
-    mkdir foo
-    echo "foo" >foo/baz
-    git add .
-    git commit -qm "add foo dir with file"
-
-    ln -s foo bar
-    git add .
-    git commit -qm "add bar dir as link"
-
-    rm bar
-    mkdir bar
-    echo "bar" >bar/baz
-    git add .
-    git commit -qm "remove link and make bar dir real"
-
-    # see https://public-inbox.org/git/95EF0665-9882-4707-BB6A-94182C01BE91@gmail.com/
-    test_expect_failure ../git-purge-files -c -d
-
-popd >/dev/null
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
