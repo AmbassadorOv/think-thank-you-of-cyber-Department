@@ -1,0 +1,44 @@
+[
+    {
+        "Payload": {
+            "Architect": "Eran Oved",
+            "Partner": "Google Global",
+            "Valuation": "$11,000,000.00",
+            "Year": 5785,
+            "Temporal_Proof": {
+                "year": 5785,
+                "molad_days": 2112591,
+                "molad_hours": 9,
+                "molad_parts": 391,
+                "molad_wd": 4,
+                "rh_days": 2112591,
+                "rh_wd": 4,
+                "postpone": 0
+            },
+            "Protection_Status": "IMMUNE_TO_LEGAL_ERASURE",
+            "Timestamp": "2026-01-23T16:08:27.224969"
+        },
+        "Signature": "0xbf95a0d9a799204735c8ecb1d672751be62041f69eb8fd713975a4df81b0d08dfd13ece9da2a57a9dabbe3b362e7a7fa"
+    },
+    {
+        "Payload": {
+            "Architect": "Eran Oved",
+            "Partner": "Google Global",
+            "Valuation": "$11,000,000.00",
+            "Year": 5786,
+            "Temporal_Proof": {
+                "year": 5786,
+                "molad_days": 2112945,
+                "molad_hours": 18,
+                "molad_parts": 187,
+                "molad_wd": 1,
+                "rh_days": 2112946,
+                "rh_wd": 2,
+                "postpone": 1
+            },
+            "Protection_Status": "IMMUNE_TO_LEGAL_ERASURE",
+            "Timestamp": "2026-01-23T16:08:27.227042"
+        },
+        "Signature": "0x1e8f2e3b5d202809fd541b6142f10811a08d6859d0f26b87c683edfede33c3b78c12fe82dc01946c4a8bd9b7bc21a71d"
+    }
+]
