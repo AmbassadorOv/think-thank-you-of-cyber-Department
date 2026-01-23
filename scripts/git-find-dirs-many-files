@@ -20,12 +20,27 @@ else
     FILE_COUNT=$1
 fi
 
-IFS=$'\n';
-DIRS=$(find . -type d -not -path "./.git/*" -exec bash -c 'COUNT=$(find "$0" -type f | wc -l); echo "$COUNT $0"' {} \; | sort -nr)
+# We use awk to aggregate file counts per directory.
+# This is much faster than running 'find' for every directory individually (O(N) vs O(N*Depth)).
+# 1. 'find . -type f' lists all files.
+# 2. 'awk' splits each path and increments counts for all parent directories.
+# 3. We filter out subdirectories of .git (except .git itself) to match original behavior.
+# 4. We filter by threshold and sort.
 
-for DIR in $DIRS; do
-    if [ $(($(echo $DIR | sed 's/\..*//'))) -le $FILE_COUNT ]; then
-        break
-    fi
-    echo $DIR
-done
+find . -type f | awk -F/ -v threshold="$FILE_COUNT" '
+{
+    path = ""
+    for (i=1; i<NF; i++) {
+        path = (i==1) ? $1 : path "/" $i
+        count[path]++
+    }
+}
+END {
+    for (path in count) {
+        # Exclude subdirectories of .git but keep .git itself, matching original behavior
+        if (path ~ /^\.\/\.git\/.+/) continue;
+        if (count[path] > threshold) {
+            print count[path] " " path
+        }
+    }
+}' | sort -nr
