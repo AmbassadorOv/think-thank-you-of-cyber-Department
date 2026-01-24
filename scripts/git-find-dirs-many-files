@@ -20,12 +20,29 @@ else
     FILE_COUNT=$1
 fi
 
-IFS=$'\n';
-DIRS=$(find . -type d -not -path "./.git/*" -exec bash -c 'COUNT=$(find "$0" -type f | wc -l); echo "$COUNT $0"' {} \; | sort -nr)
-
-for DIR in $DIRS; do
-    if [ $(($(echo $DIR | sed 's/\..*//'))) -le $FILE_COUNT ]; then
+# Use find and awk to count files in each directory in a single pass O(N)
+# instead of O(N*Depth) with nested find calls.
+#
+# Performance impact: For a repository with many files and deep directory
+# structures, this reduces the number of file system traversals from
+# one per directory to exactly one for the entire repository.
+find . -type f -not -path "./.git/*" | awk '
+{
+    path = $0
+    # Increment count for each parent directory
+    while (sub(/\/[^\/]+$/, "", path)) {
+        count[path]++
+    }
+}
+END {
+    for (d in count) {
+        print count[d], d
+    }
+}' | sort -nr | while read -r line; do
+    # Extract count from the beginning of the line
+    count=${line%% *}
+    if [ "$count" -le "$FILE_COUNT" ]; then
         break
     fi
-    echo $DIR
+    echo "$line"
 done
