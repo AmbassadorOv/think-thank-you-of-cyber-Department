@@ -1,3 +1,6 @@
 access_token
 .DS_Store
 .bundle
+__pycache__/
+*.py[cod]
+*$py.class
