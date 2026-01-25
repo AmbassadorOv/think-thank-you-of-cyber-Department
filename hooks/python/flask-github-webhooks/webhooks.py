@@ -1,7 +1,7 @@
 import logging
+import time
 from sys import stderr, hexversion
 import hmac
-from hashlib import sha1
 from json import loads, dumps
 from subprocess import Popen, PIPE
 from tempfile import mkstemp
@@ -16,34 +16,64 @@ logging.basicConfig(stream=stderr)
 
 application = Flask(__name__)
 
+# Load the config file once at startup to avoid redundant disk I/O on every request
+PATH = normpath(abspath(dirname(__file__)))
+CONFIG = {}
+try:
+    with open(join(PATH, 'config.json'), 'r') as cfg:
+        CONFIG = loads(cfg.read())
+except FileNotFoundError:
+    logging.warning("config.json not found, using defaults")
+
+# In-memory cache for GitHub IP whitelist to avoid redundant network requests
+GHP_IP_CACHE = {
+    'networks': None,
+    'last_updated': 0
+}
+CACHE_TTL = 86400  # 24 hours (GitHub IPs don't change frequently)
+
+
+def get_github_networks():
+    """
+    Fetch and cache GitHub's IP whitelist, pre-parsing them into network objects.
+    """
+    now = time.time()
+    if GHP_IP_CACHE['networks'] is None or now - GHP_IP_CACHE['last_updated'] > CACHE_TTL:
+        try:
+            # Performance optimization: avoids ~0.6s network request on every call
+            whitelist = requests.get('https://api.github.com/meta').json()['hooks']
+            GHP_IP_CACHE['networks'] = [ip_network(u'{}'.format(ip)) for ip in whitelist]
+            GHP_IP_CACHE['last_updated'] = now
+        except Exception as e:
+            if GHP_IP_CACHE['networks'] is None:
+                raise e
+            logging.error("Failed to refresh GitHub IP whitelist: {}".format(e))
+    return GHP_IP_CACHE['networks']
+
 
 @application.route('/', methods=['GET', 'POST'])
 def index():
     """
     Main WSGI application entry.
     """
-    path = normpath(abspath(dirname(__file__)))
     # Only POST is implemented
     if request.method != 'POST':
         abort(501, "only POST is supported")
 
-    # Load the config file
-    with open(join(path, 'config.json'), 'r') as cfg:
-        config = loads(cfg.read())
-
-    hooks = config.get('hooks_path', join(path, 'hooks'))
+    hooks = CONFIG.get('hooks_path', join(PATH, 'hooks'))
     # Allow Github IPs only
-    if config.get('github_ips_only', True):
+    if CONFIG.get('github_ips_only', True):
         src_ip = ip_address(u'{}'.format(request.remote_addr))
-        whitelist = requests.get('https://api.github.com/meta').json()['hooks']
-        for valid_ip in whitelist:
-            if src_ip in ip_network(valid_ip):
+        networks = get_github_networks()
+
+        for network in networks:
+            if src_ip in network:
                 break
-            else:
-                abort(403, "Unable to validate source IP")
+        else:
+            abort(403, "Unable to validate source IP")
 
     # Enforce secret, so not just anybody can trigger these hooks
-    secret = config.get('enforce_secret', '')
+    secret = CONFIG.get('enforce_secret', '')
     if secret:
         # Only SHA1 is supported
         header_signature = request.headers.get('X-Hub-Signature')
@@ -54,8 +84,9 @@ def index():
         if sha_name != 'sha1':
             abort(501, "Only SHA1 is supported")
 
-        # HMAC requires the key to be bytes, but data is string
-        mac = hmac.new(str(secret), msg=request.data, digestmod='sha1')
+        # HMAC requires the key to be bytes. In Python 3, we must encode the string.
+        secret_bytes = secret.encode('utf-8') if isinstance(secret, str) else secret
+        mac = hmac.new(secret_bytes, msg=request.data, digestmod='sha1')
 
         # Python does not have hmac.compare_digest prior to 2.7.7
         if hexversion >= 0x020707F0:
@@ -160,7 +191,7 @@ def index():
 
     # Remove temporal file
     remove(tmpfile)
-    info = config.get('return_scripts_info', False)
+    info = CONFIG.get('return_scripts_info', False)
     if not info:
         return dumps({'status': 'done'})
 
