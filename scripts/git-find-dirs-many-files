@@ -20,12 +20,18 @@ else
     FILE_COUNT=$1
 fi
 
-IFS=$'\n';
-DIRS=$(find . -type d -not -path "./.git/*" -exec bash -c 'COUNT=$(find "$0" -type f | wc -l); echo "$COUNT $0"' {} \; | sort -nr)
-
-for DIR in $DIRS; do
-    if [ $(($(echo $DIR | sed 's/\..*//'))) -le $FILE_COUNT ]; then
-        break
-    fi
-    echo $DIR
-done
+# Use a single-pass find and awk aggregation to achieve O(N) performance.
+# This replaces the O(N*Depth) nested loop that called find for every directory.
+# We exclude the .git directory as it is not a candidate for purging.
+find . -type f -not -path "./.git/*" | awk -v threshold="$FILE_COUNT" '{
+    path = $0
+    while (sub(/\/[^\/]*$/, "", path)) {
+        count[path]++
+    }
+} END {
+    for (p in count) {
+        if (count[p] > threshold) {
+            print count[p], p
+        }
+    }
+}' | sort -nr
