@@ -20,12 +20,24 @@ else
     FILE_COUNT=$1
 fi
 
-IFS=$'\n';
-DIRS=$(find . -type d -not -path "./.git/*" -exec bash -c 'COUNT=$(find "$0" -type f | wc -l); echo "$COUNT $0"' {} \; | sort -nr)
-
-for DIR in $DIRS; do
-    if [ $(($(echo $DIR | sed 's/\..*//'))) -le $FILE_COUNT ]; then
-        break
-    fi
-    echo $DIR
-done
+# Optimized using a single-pass find and awk pipeline.
+# This approach is O(N) where N is the total number of files,
+# significantly faster than the original O(D*N) implementation.
+# It also correctly excludes the .git directory.
+find . -name .git -prune -o -type f -print | awk -F/ -v threshold="$FILE_COUNT" '
+{
+    # find . -type f outputs paths starting with "./"
+    p = $1
+    for (i=2; i<NF; i++) {
+        p = p "/" $i
+        count[p]++
+    }
+    count["."]++
+}
+END {
+    for (p in count) {
+        if (count[p] > threshold) {
+            print count[p], p
+        }
+    }
+}' | sort -nr
