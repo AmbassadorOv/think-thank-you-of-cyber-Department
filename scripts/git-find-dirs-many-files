@@ -15,17 +15,23 @@
 #
 
 if [ -z "$1" ]; then
-    FILE_COUNT=100
+    FILE_COUNT_THRESHOLD=100
 else
-    FILE_COUNT=$1
+    FILE_COUNT_THRESHOLD=$1
 fi
 
-IFS=$'\n';
-DIRS=$(find . -type d -not -path "./.git/*" -exec bash -c 'COUNT=$(find "$0" -type f | wc -l); echo "$COUNT $0"' {} \; | sort -nr)
-
-for DIR in $DIRS; do
-    if [ $(($(echo $DIR | sed 's/\..*//'))) -le $FILE_COUNT ]; then
-        break
-    fi
-    echo $DIR
-done
+# Performance Optimization:
+# Replace the original O(N*Depth) nested find calls with a single-pass O(N) pipeline.
+# We use 'find' to list all files once, and 'awk' to aggregate counts for all
+# parent directories. This is significantly faster on large repositories.
+find . -path "./.git" -prune -o -type f -print | awk -F/ '{
+    path = ""
+    for (i=1; i<NF; i++) {
+        path = (i==1) ? $i : path "/" $i
+        count[path]++
+    }
+} END {
+    for (p in count) {
+        print count[p], p
+    }
+}' | sort -nr | awk -v threshold="$FILE_COUNT_THRESHOLD" '$1 > threshold'
