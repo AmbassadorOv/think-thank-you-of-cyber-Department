@@ -25,66 +25,49 @@ else
     MIN_SIZE_IN_KB=$1
 fi
 
-# Use "look" if it is available, otherwise use "grep" (e.g. on Windows)
-if look >/dev/null 2>&1; then
-    # On Debian the "-b" is available and required to make "look" perform
-    # a binary search (see https://unix.stackexchange.com/a/499312/275508 ).
-    if look 2>&1 | grep -q .-b; then
-        search="look -b"
-    else
-        search=look
-    fi
-else
-    search=grep
-fi
-
-# set the internal field separator to line break,
-# so that we can iterate easily over the verify-pack output
-IFS=$'\n';
-
-# list all objects including their size, sort by compressed size
-OBJECTS=$(
-    git cat-file \
-        --batch-all-objects \
-        --batch-check='%(objectsize:disk) %(objectname)' \
-    | sort -nr
-)
-
 TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/git-find-large-files.XXXXXX") || exit
 trap "rm -rf '$TMP_DIR'" EXIT
 
-git rev-list --all --objects | sort > "$TMP_DIR/objects"
-git rev-list --all --objects --max-count=1 | sort > "$TMP_DIR/objects.1"
+# Gather all necessary data
+git cat-file --batch-all-objects --batch-check='%(objectsize:disk) %(objectname)' > "$TMP_DIR/sizes"
+git rev-list --all --objects > "$TMP_DIR/names"
+git rev-list --all --objects --max-count=1 | awk '{print $1}' > "$TMP_DIR/head_shas"
+# List all files and directories on disk, excluding the .git directory
+find . -name .git -prune -o -print | sed 's|^\./||' > "$TMP_DIR/on_disk"
 
-for OBJ in $OBJECTS; do
-    # extract the compressed size in kilobytes
-    COMPRESSED_SIZE=$(($(echo $OBJ | cut -f 1 -d ' ')/1024))
+# Process with awk (using hash map lookup for O(N) performance)
+awk -v min="$MIN_SIZE_IN_KB" '
+    FNR == 1 { file_idx++ }
+    file_idx == 1 { head[$1]=1; next }
+    file_idx == 2 { disk[$0]=1; next }
+    file_idx == 3 {
+        sha=$1
+        if (NF > 1) {
+            $1=""
+            sub(/^ /, "", $0)
+            name[sha]=$0
+        } else {
+            name[sha]=sha
+        }
+        next
+    }
+    {
+        size_kb = int($1/1024)
+        if (size_kb > min) {
+            sha = $2
+            loc = name[sha]
+            if (loc == "") loc = sha
+            if (sha in head) status="Present"
+            else if (loc != "" && disk[loc]) status="Changed"
+            else status="Deleted"
+            printf "%d,%s,%s\n", size_kb, status, loc
+        }
+    }
+' "$TMP_DIR/head_shas" "$TMP_DIR/on_disk" "$TMP_DIR/names" "$TMP_DIR/sizes" | sort -rn > "$TMP_DIR/output"
 
-    if [ $COMPRESSED_SIZE -le $MIN_SIZE_IN_KB ]; then
-        break
-    fi
-
-    # extract the SHA
-    SHA=$(echo $OBJ | cut -f 2 -d ' ')
-
-    # find the objects location in the repository tree
-    LOCATION=$($search $SHA "$TMP_DIR/objects" | sed "s/$SHA //")
-    if $search $SHA "$TMP_DIR/objects.1" >/dev/null; then
-        # Object is in the head revision
-        HEAD="Present"
-    elif [ -e $LOCATION ]; then
-        # Objects path is in the head revision
-        HEAD="Changed"
-    else
-        # Object nor its path is in the head revision
-        HEAD="Deleted"
-    fi
-
-    echo "$COMPRESSED_SIZE,$HEAD,$LOCATION" >> "$TMP_DIR/output"
-done
-
-if [ -f "$TMP_DIR/output" ]; then
-    column -t -s ',' < "$TMP_DIR/output"
+# Aligned output using awk (replaces missing column utility and improves portability)
+if [ -s "$TMP_DIR/output" ]; then
+    awk -F, '{ printf "%-10s %-10s %s\n", $1, $2, $3 }' "$TMP_DIR/output"
 fi
 
 rm -rf "$TMP_DIR"
