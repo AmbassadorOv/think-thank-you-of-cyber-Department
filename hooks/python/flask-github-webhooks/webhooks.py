@@ -17,33 +17,46 @@ logging.basicConfig(stream=stderr)
 application = Flask(__name__)
 
 
+# Load the config file once at startup
+PATH = normpath(abspath(dirname(__file__)))
+with open(join(PATH, 'config.json'), 'r') as cfg:
+    CONFIG = loads(cfg.read())
+
+# Cache for GitHub IP metadata
+GITHUB_IP_METADATA = None
+
+
+def get_github_ips():
+    """
+    Fetch and cache GitHub IP whitelist.
+    """
+    global GITHUB_IP_METADATA
+    if GITHUB_IP_METADATA is None:
+        # Fetch whitelist and pre-calculate ip_network objects
+        whitelist = requests.get('https://api.github.com/meta').json()['hooks']
+        GITHUB_IP_METADATA = [ip_network(ip) for ip in whitelist]
+    return GITHUB_IP_METADATA
+
+
 @application.route('/', methods=['GET', 'POST'])
 def index():
     """
     Main WSGI application entry.
     """
-    path = normpath(abspath(dirname(__file__)))
     # Only POST is implemented
     if request.method != 'POST':
         abort(501, "only POST is supported")
 
-    # Load the config file
-    with open(join(path, 'config.json'), 'r') as cfg:
-        config = loads(cfg.read())
-
-    hooks = config.get('hooks_path', join(path, 'hooks'))
+    hooks = CONFIG.get('hooks_path', join(PATH, 'hooks'))
     # Allow Github IPs only
-    if config.get('github_ips_only', True):
+    if CONFIG.get('github_ips_only', True):
         src_ip = ip_address(u'{}'.format(request.remote_addr))
-        whitelist = requests.get('https://api.github.com/meta').json()['hooks']
-        for valid_ip in whitelist:
-            if src_ip in ip_network(valid_ip):
-                break
-            else:
-                abort(403, "Unable to validate source IP")
+        whitelist = get_github_ips()
+        if not any(src_ip in net for net in whitelist):
+            abort(403, "Unable to validate source IP")
 
     # Enforce secret, so not just anybody can trigger these hooks
-    secret = config.get('enforce_secret', '')
+    secret = CONFIG.get('enforce_secret', '')
     if secret:
         # Only SHA1 is supported
         header_signature = request.headers.get('X-Hub-Signature')
@@ -54,19 +67,13 @@ def index():
         if sha_name != 'sha1':
             abort(501, "Only SHA1 is supported")
 
-        # HMAC requires the key to be bytes, but data is string
-        mac = hmac.new(str(secret), msg=request.data, digestmod='sha1')
+        # HMAC requires the key to be bytes
+        key = secret.encode('utf-8') if hasattr(secret, 'encode') else secret
+        mac = hmac.new(key, msg=request.data, digestmod='sha1')
 
-        # Python does not have hmac.compare_digest prior to 2.7.7
-        if hexversion >= 0x020707F0:
-            if not hmac.compare_digest(str(mac.hexdigest()), str(signature)):
-                abort(403)
-        else:
-            # What compare_digest provides is protection against timing
-            # attacks; we can live without this protection for a web-based
-            # application
-            if not str(mac.hexdigest()) == str(signature):
-                abort(403)
+        # hmac.compare_digest is available in Python 3.3+
+        if not hmac.compare_digest(str(mac.hexdigest()), str(signature)):
+            abort(403)
 
     # Implement ping
     event = request.headers.get('X-GitHub-Event', 'ping')
@@ -160,7 +167,7 @@ def index():
 
     # Remove temporal file
     remove(tmpfile)
-    info = config.get('return_scripts_info', False)
+    info = CONFIG.get('return_scripts_info', False)
     if not info:
         return dumps({'status': 'done'})
 
