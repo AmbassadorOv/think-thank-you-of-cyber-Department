@@ -20,12 +20,22 @@ else
     FILE_COUNT=$1
 fi
 
-IFS=$'\n';
-DIRS=$(find . -type d -not -path "./.git/*" -exec bash -c 'COUNT=$(find "$0" -type f | wc -l); echo "$COUNT $0"' {} \; | sort -nr)
-
-for DIR in $DIRS; do
-    if [ $(($(echo $DIR | sed 's/\..*//'))) -le $FILE_COUNT ]; then
-        break
-    fi
-    echo $DIR
-done
+# Use awk to aggregate file counts per directory in a single pass.
+# This is much faster than spawning a new find/wc process for every directory.
+# We exclude .git/* to avoid counting internal Git objects.
+find . -type f -not -path "./.git/*" | awk -F/ -v threshold="$FILE_COUNT" '
+    {
+        path = $1
+        counts[path]++
+        for (i = 2; i < NF; i++) {
+            path = path "/" $i
+            counts[path]++
+        }
+    }
+    END {
+        for (p in counts) {
+            if (counts[p] > threshold) {
+                print counts[p], p
+            }
+        }
+    }' | sort -nr
