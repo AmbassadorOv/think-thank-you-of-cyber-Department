@@ -25,67 +25,58 @@ else
     MIN_SIZE_IN_KB=$1
 fi
 
-# Use "look" if it is available, otherwise use "grep" (e.g. on Windows)
-if look >/dev/null 2>&1; then
-    # On Debian the "-b" is available and required to make "look" perform
-    # a binary search (see https://unix.stackexchange.com/a/499312/275508 ).
-    if look 2>&1 | grep -q .-b; then
-        search="look -b"
-    else
-        search=look
-    fi
-else
-    search=grep
-fi
+# Use awk to join object metadata and status in a single pass.
+# This is significantly faster than the original shell loop (O(N) vs O(N*logN)).
+# It also fixes the dependency on the "column" command by using printf formatting.
 
-# set the internal field separator to line break,
-# so that we can iterate easily over the verify-pack output
-IFS=$'\n';
+git cat-file --batch-all-objects --batch-check='%(objectsize:disk) %(objectname)' | \
+sort -nr | \
+awk -v threshold="$MIN_SIZE_IN_KB" \
+    -v head_objs_cmd="git rev-list --all --objects --max-count=1" \
+    -v all_objs_cmd="git rev-list --all --objects" \
+    -v on_disk_cmd="find . -not -path './.git/*'" \
+'
+BEGIN {
+    # 1. Load objects in the latest commit reachable from any ref
+    while ((head_objs_cmd | getline line) > 0) {
+        split(line, parts, " ")
+        is_head[parts[1]] = 1
+    }
+    close(head_objs_cmd)
 
-# list all objects including their size, sort by compressed size
-OBJECTS=$(
-    git cat-file \
-        --batch-all-objects \
-        --batch-check='%(objectsize:disk) %(objectname)' \
-    | sort -nr
-)
+    # 2. Load all objects and their paths from the entire history
+    while ((all_objs_cmd | getline line) > 0) {
+        n = split(line, parts, " ")
+        if (n > 1) {
+            sha = parts[1]
+            match(line, / /)
+            path[sha] = substr(line, RSTART + 1)
+        }
+    }
+    close(all_objs_cmd)
 
-TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/git-find-large-files.XXXXXX") || exit
-trap "rm -rf '$TMP_DIR'" EXIT
+    # 3. Load all current files/directories on disk to check "Changed" status
+    while ((on_disk_cmd | getline line) > 0) {
+        sub(/^\.\//, "", line)
+        if (line != "" && line != ".") on_disk[line] = 1
+    }
+    close(on_disk_cmd)
 
-git rev-list --all --objects | sort > "$TMP_DIR/objects"
-git rev-list --all --objects --max-count=1 | sort > "$TMP_DIR/objects.1"
+    printf "%-10s %-10s %s\n", "SIZE(KB)", "HEAD", "LOCATION"
+}
+{
+    size_kb = int($1 / 1024)
+    if (size_kb <= threshold) exit
 
-for OBJ in $OBJECTS; do
-    # extract the compressed size in kilobytes
-    COMPRESSED_SIZE=$(($(echo $OBJ | cut -f 1 -d ' ')/1024))
-
-    if [ $COMPRESSED_SIZE -le $MIN_SIZE_IN_KB ]; then
-        break
-    fi
-
-    # extract the SHA
-    SHA=$(echo $OBJ | cut -f 2 -d ' ')
-
-    # find the objects location in the repository tree
-    LOCATION=$($search $SHA "$TMP_DIR/objects" | sed "s/$SHA //")
-    if $search $SHA "$TMP_DIR/objects.1" >/dev/null; then
-        # Object is in the head revision
-        HEAD="Present"
-    elif [ -e $LOCATION ]; then
-        # Objects path is in the head revision
-        HEAD="Changed"
-    else
-        # Object nor its path is in the head revision
-        HEAD="Deleted"
-    fi
-
-    echo "$COMPRESSED_SIZE,$HEAD,$LOCATION" >> "$TMP_DIR/output"
-done
-
-if [ -f "$TMP_DIR/output" ]; then
-    column -t -s ',' < "$TMP_DIR/output"
-fi
-
-rm -rf "$TMP_DIR"
-exit 0
+    sha = $2
+    loc = path[sha]
+    if (sha in is_head) {
+        status = "Present"
+    } else if (loc != "" && loc in on_disk) {
+        status = "Changed"
+    } else {
+        status = "Deleted"
+    }
+    printf "%-10d %-10s %s\n", size_kb, status, loc
+}
+'
