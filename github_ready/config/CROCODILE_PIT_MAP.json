@@ -1,0 +1,107 @@
+{
+  "operation_name": "Operation Black Leather",
+  "map_title": "Crocodile Pit - Global AI Market",
+  "timestamp": "2026-04-04T00:00:00Z",
+  "entities": [
+    {
+      "id": "NVDA",
+      "name": "Nvidia",
+      "leader": "Jensen Huang",
+      "alias": "Black Leather Crocodile",
+      "role": "THE CONNECTOR",
+      "threat_level": 10,
+      "status": "ACTIVE_HUNTING",
+      "target": "MUSK",
+      "assets": [
+        "H100",
+        "DGX",
+        "Omniverse",
+        "CUDA"
+      ],
+      "color": "#000000"
+    },
+    {
+      "id": "MUSK",
+      "name": "Elon Musk Group",
+      "alias": "The Builder",
+      "role": "INFRASTRUCTURE OWNER",
+      "vulnerability": "HIGH",
+      "companies": [
+        "Tesla",
+        "SpaceX",
+        "Starlink",
+        "X"
+      ],
+      "weakness": "No AI Integration Layer",
+      "color": "#C0C0C0"
+    },
+    {
+      "id": "MSFT",
+      "name": "Microsoft",
+      "role": "CLOUD TERRITORY",
+      "color": "#0078D4"
+    },
+    {
+      "id": "GOOG",
+      "name": "Google DeepMind",
+      "role": "BRAIN TERRITORY",
+      "color": "#4285F4"
+    },
+    {
+      "id": "AMZN",
+      "name": "Amazon AWS",
+      "role": "WAREHOUSE TERRITORY",
+      "color": "#FF9900"
+    },
+    {
+      "id": "META",
+      "name": "Meta",
+      "role": "SOCIAL DATA TERRITORY",
+      "color": "#0866FF"
+    },
+    {
+      "id": "AAPL",
+      "name": "Apple",
+      "role": "GATE TERRITORY",
+      "color": "#FFFFFF"
+    },
+    {
+      "id": "BABA",
+      "name": "Alibaba",
+      "role": "CHINESE PIT",
+      "color": "#FF6A00"
+    },
+    {
+      "id": "ARK",
+      "name": "ARK GENESIS",
+      "assets_usd": 2000000,
+      "role": "THE MEDIATOR",
+      "status": "GROUNDED",
+      "blocker": "NO_PASSPORT",
+      "color": "#00FF7F"
+    }
+  ],
+  "connections": [
+    {
+      "from": "NVDA",
+      "to": "MUSK",
+      "type": "ATTACK",
+      "urgency": "CRITICAL"
+    },
+    {
+      "from": "NVDA",
+      "to": "MSFT",
+      "type": "PARTNERSHIP"
+    },
+    {
+      "from": "NVDA",
+      "to": "GOOG",
+      "type": "PARTNERSHIP"
+    },
+    {
+      "from": "NVDA",
+      "to": "AMZN",
+      "type": "PARTNERSHIP"
+    }
+  ]
+}
