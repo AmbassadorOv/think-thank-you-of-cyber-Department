@@ -1,0 +1,3 @@
+User-agent: *
+Disallow: /
+# NNN Notice: No statistical scavenging allowed.
